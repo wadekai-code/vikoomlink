@@ -1,0 +1,9 @@
+CONFIG_TARGET_ramips=y
+CONFIG_TARGET_ramips_mt7621=y
+CONFIG_TARGET_ramips_mt7621_DEVICE_vikoomlink_kt6=y
+CONFIG_LUCI_LANG_zh_Hans=y
+CONFIG_PACKAGE_lldpd=y
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_luci-app-eoip=y
+CONFIG_PACKAGE_luci-app-watchcat=y
+CONFIG_PACKAGE_luci-theme-material=y

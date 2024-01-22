@@ -1,0 +1,204 @@
+From c335f6d92b1b78a903b65465d56f4497496c2d1f Mon Sep 17 00:00:00 2001
+From: Shiji Yang <yangshiji66@qq.com>
+Date: Thu, 22 Feb 2023 18:20:56 +0300
+Subject: [PATCH 1/5] Add support for using vermagic the same as in the
+ official firmware
+
+---
+ include/feeds.mk           |  3 ++
+ include/kernel-defaults.mk |  1 +
+ scripts/getvermagic.sh     | 67 +++++++++++++++++++++++++++++++
+ vermagic_update.sh         | 81 ++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 152 insertions(+)
+ create mode 100755 scripts/getvermagic.sh
+ create mode 100755 vermagic_update.sh
+
+diff --git a/include/feeds.mk b/include/feeds.mk
+index 632fecb4a3..400577b21d 100644
+--- a/include/feeds.mk
++++ b/include/feeds.mk
+@@ -35,6 +35,9 @@ define FeedSourcesAppend
+ 	echo 'src/gz %d_base %U/packages/%A/base'; \
+ 	$(if $(filter %SNAPSHOT-y,$(VERSION_NUMBER)-$(CONFIG_BUILDBOT)), \
+ 		echo 'src/gz %d_kmods %U/targets/%S/kmods/$(LINUX_VERSION)-$(LINUX_RELEASE)-$(LINUX_VERMAGIC)';) \
++	$(if $(filter %SNAPSHOT,$(VERSION_NUMBER)), \
++		$(if $(wildcard $(TOPDIR)/vermagic-$(BOARD)-$(SUBTARGET)-$(VERSION_NUMBER).list), \
++			echo 'src/gz %d_kmods %U/targets/%S/kmods/$(LINUX_VERSION)-$(LINUX_RELEASE)-$(LINUX_VERMAGIC)';)) \
+ 	$(foreach feed,$(FEEDS_AVAILABLE), \
+ 		$(if $(CONFIG_FEED_$(feed)), \
+ 			echo '$(if $(filter m,$(CONFIG_FEED_$(feed))),# )src/gz %d_$(feed) %U/packages/%A/$(feed)';)))) \
+diff --git a/include/kernel-defaults.mk b/include/kernel-defaults.mk
+index b17ff7f932..0b7d49d074 100644
+--- a/include/kernel-defaults.mk
++++ b/include/kernel-defaults.mk
+@@ -119,6 +119,7 @@ define Kernel/Configure/Default
+ 	}
+ 	$(_SINGLE) [ -d $(LINUX_DIR)/user_headers ] || $(KERNEL_MAKE) $(if $(findstring uml,$(BOARD)),ARCH=$(ARCH)) INSTALL_HDR_PATH=$(LINUX_DIR)/user_headers headers_install
+ 	grep '=[ym]' $(LINUX_DIR)/.config.set | LC_ALL=C sort | $(MKHASH) md5 > $(LINUX_DIR)/.vermagic
++	$(SCRIPT_DIR)/getvermagic.sh "$(BOARD)" "$(SUBTARGET)" "$(VERSION_NUMBER)" $(LINUX_VERSION) $(LINUX_RELEASE) "$(LINUX_DIR)/.vermagic"
+ endef
+ 
+ define Kernel/Configure/Initramfs
+diff --git a/scripts/getvermagic.sh b/scripts/getvermagic.sh
+new file mode 100755
+index 0000000000..f21d954495
+--- /dev/null
++++ b/scripts/getvermagic.sh
+@@ -0,0 +1,67 @@
++#!/usr/bin/env bash
++
++BOARD=$1
++SUBTARGET=$2
++VERSION_NUMBER=$3
++LINUX_VERSION=$4
++LINUX_RELEASE=$5
++OUTFILE=$6
++
++if [ -t 8 ]; then
++	BUILD_STATE=true
++	OUTPUT_PIPE=8
++else
++	BUILD_STATE=false
++	OUTPUT_PIPE=2
++fi
++
++log_msg() {
++	printf "%s\n" "$1" >&$OUTPUT_PIPE
++}
++
++log_err() {
++	local msg="$1"
++	local _Y _R _N
++	if [ "$IS_TTY" == "1" -a "$NO_COLOR" != "1" ]; then
++		_Y=\\033[33m
++		_R=\\033[31m
++		_N=\\033[m
++	fi
++	printf "$_R%s$_N\n" "$msg" >&$OUTPUT_PIPE
++}
++
++die() {
++	log_err "$1"
++	exit 1
++}
++
++if [ -z "$VERSION_NUMBER" ]; then
++	version_file="$TOPDIR/include/version.mk"
++	VERSION_NUMBER=$( grep -o -P '(?<=,\$\(VERSION_NUMBER\),).*(?=\))' $version_file 2>/dev/null )
++fi
++[ -z "$VERSION_NUMBER" ] && die "Cannot determine VERSION_NUMBER"
++
++vermagic_file="$TOPDIR/vermagic-$BOARD-$SUBTARGET-$VERSION_NUMBER.list"
++if [ ! -f "$vermagic_file" ]; then
++	log_msg "Using standard vermagic"
++	exit 0
++fi
++
++KERNEL_VER=$LINUX_VERSION-$LINUX_RELEASE
++vermagic=$( grep -o -P "(?<=$KERNEL_VER-).*" $vermagic_file 2>/dev/null )
++
++if [ -z "$vermagic" ]; then
++	die "Cannot found vermagic for kernel $KERNEL_VER"
++fi
++if [ "$( echo "$vermagic" | wc -l )" -gt 1 ]; then
++	log_msg "Found a few vermagic for kernel $KERNEL_VER"
++fi
++vermagic=$( echo "$vermagic" | sed -n '1p' )
++log_msg "vermagic = $vermagic"
++
++if [ -n "$OUTFILE" ]; then
++	echo $vermagic > "$OUTFILE"
++else
++	echo $vermagic
++fi
++
+diff --git a/vermagic_update.sh b/vermagic_update.sh
+new file mode 100755
+index 0000000000..783e640e58
+--- /dev/null
++++ b/vermagic_update.sh
+@@ -0,0 +1,81 @@
++#!/usr/bin/env bash
++
++SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
++
++BOARD=$1
++SUBTARGET=$2
++OUTDIR=$3
++
++[ -z "$OUTDIR" ] && OUTDIR=$SCRIPT_DIR
++
++log_msg() {
++	printf "%s\n" "$1"
++}
++
++log_err() {
++	local _Y="\\033[33m"
++	local _R="\\033[31mERROR: "
++	local _N="\\033[m"
++	printf "$_R%s$_N\n" "ERROR: $1"
++}
++
++die() {
++	log_err "$1"
++	exit 1
++}
++
++#rm -f $OUTDIR/vermagic-*.list 2>/dev/null
++
++config_file="$OUTDIR/.config"
++#CONFIG_TARGET_BOARD="ipq806x"
++#CONFIG_TARGET_SUBTARGET="generic"
++
++if [ -z "$BOARD" ]; then
++	[ ! -f $config_file ] && die "File '.config' not found"
++	BOARD=$( grep -o -P '(?<=CONFIG_TARGET_BOARD=").*(?=")' $config_file 2>/dev/null )
++	[ -z "$BOARD" ] && die "Cannot determine BOARD"
++fi
++if [ -z "$SUBTARGET" ]; then
++	[ ! -f $config_file ] && die "File '.config' not found"
++	SUBTARGET=$( grep -o -P '(?<=CONFIG_TARGET_SUBTARGET=").*(?=")' $config_file 2>/dev/null )
++	[ -z "$SUBTARGET" ] && die "Cannot determine SUBTARGET"
++fi
++
++rm -f $OUTDIR/vermagic-$BOARD-$SUBTARGET*.list 2>/dev/null
++
++#kernel_ver_file="$OUTDIR/include/kernel-version.mk"
++#LINUX_RELEASE?=1
++#LINUX_KERNEL_HASH-5.4.154 = 058994f4666b6b0474a4d5228583e394594e406783b7e93d487c2a66c35f3c06 
++
++#LINUX_VERSION=$( grep -o -P '(?<=LINUX_KERNEL_HASH-).*(?=\ =\ )' $kernel_ver_file 2>/dev/null )
++#LINUX_VERSION=$( echo "$LINUX_VERSION" | xargs )
++#[ -z "$LINUX_VERSION" ] && die "Cannot determine kernel version"
++#echo "LINUX_VERSION = '$LINUX_VERSION'"
++
++#LINUX_RELEASE=$( grep -o -P '(?<=LINUX_RELEASE\?=).*' $kernel_ver_file 2>/dev/null )
++#LINUX_RELEASE=$( echo "$LINUX_RELEASE" | xargs )
++#[ -z "$LINUX_RELEASE" ] && die "Cannot determine kernel release number"
++#echo "LINUX_RELEASE = '$LINUX_RELEASE'"
++
++version_file="$OUTDIR/include/version.mk"
++#VERSION_NUMBER:=$(if $(VERSION_NUMBER),$(VERSION_NUMBER),21.02.1)
++#VERSION_REPO:=$(if $(VERSION_REPO),$(VERSION_REPO),https://downloads.openwrt.org/releases/21.02.1)
++
++VERSION_NUMBER=$( grep -o -P '(?<=,\$\(VERSION_NUMBER\),).*(?=\))' $version_file 2>/dev/null )
++[ -z "$VERSION_NUMBER" ] && die "Cannot determine VERSION_NUMBER"
++#echo "VERSION_NUMBER = '$VERSION_NUMBER'"
++
++VERSION_REPO=$( grep -o -P '(?<=,\$\(VERSION_REPO\),http).*(?=\))' $version_file 2>/dev/null )
++[ -z "$VERSION_REPO" ] && die "Cannot determine VERSION_REPO"
++VERSION_REPO=http$VERSION_REPO
++#echo "VERSION_REPO = '$VERSION_REPO'"
++
++kmods_url=$VERSION_REPO/targets/$BOARD/$SUBTARGET/kmods/
++kmods=$( curl -s $kmods_url )
++[ -z "$kmods" ] && die "Cannot download WEB-page from '$kmods_url'"
++vermagic=$( echo "$kmods" | grep '<tr><td class="' 2>/dev/null | sed -e 's/.*href="//;s/\/">.*//' 2>/dev/null )
++[ -z "$vermagic" ] && die "Cannot found kmods on '$kmods_url'"
++
++vermagic_file=vermagic-$BOARD-$SUBTARGET-$VERSION_NUMBER.list
++echo "$vermagic" > $OUTDIR/$vermagic_file && log_msg "File '$vermagic_file' updated."
++
+-- 
+2.39.2
+

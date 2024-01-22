@@ -1,0 +1,47 @@
+From 082bac4a7c0ccf2e076c0ccef2db4d81fc71d867 Mon Sep 17 00:00:00 2001
+From: Shiji Yang <yangshiji66@qq.com>
+Date: Thu, 9 Feb 2023 18:10:00 +0800
+Subject: [PATCH 4/5] mac80211: change default wireless configuration
+
+1. enable Wi-Fi by default
+2. set cell density to '0'
+3. change default WiFi country code to CN
+4. set 2.4 GHz default BW to 40 MHz
+5. enable force 40 MHz mode
+
+Signed-off-by: Shiji Yang <yangshiji66@qq.com>
+---
+ package/kernel/mac80211/files/lib/wifi/mac80211.sh | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/package/kernel/mac80211/files/lib/wifi/mac80211.sh b/package/kernel/mac80211/files/lib/wifi/mac80211.sh
+index e24a2a634e..8ae9f2144b 100644
+--- a/package/kernel/mac80211/files/lib/wifi/mac80211.sh
++++ b/package/kernel/mac80211/files/lib/wifi/mac80211.sh
+@@ -56,10 +56,10 @@ BEGIN {
+ ($1 == "Band" || $1 == "") && band {
+         if (channel) {
+ 		mode="NOHT"
+-		if (ht) mode="HT20"
++		if (ht) mode="HT40"
+ 		if (vht && band != "1:") mode="VHT80"
+ 		if (he) mode="HE80"
+-		if (he && band == "1:") mode="HE20"
++		if (he && band == "1:") mode="HE40"
+                 sub("\\[", "", channel)
+                 sub("\\]", "", channel)
+                 bands = bands band channel ":" mode " "
+@@ -203,7 +203,9 @@ detect_mac80211() {
+ 			set wireless.${name}.channel=${channel}
+ 			set wireless.${name}.band=${mode_band}
+ 			set wireless.${name}.htmode=$htmode
+-			set wireless.${name}.disabled=1
++			set wireless.${name}.cell_density=1
++			set wireless.${name}.country=CN
++			set wireless.${name}.noscan=1
+ 
+ 			set wireless.default_${name}=wifi-iface
+ 			set wireless.default_${name}.device=${name}
+-- 
+2.39.2
+

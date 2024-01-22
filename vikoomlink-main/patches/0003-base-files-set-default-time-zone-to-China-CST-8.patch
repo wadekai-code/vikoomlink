@@ -1,0 +1,27 @@
+From cbab0c3001c4b904f0fdf4f7672b1293bd82540b Mon Sep 17 00:00:00 2001
+From: Shiji Yang <yangshiji66@qq.com>
+Date: Thu, 9 Feb 2023 18:10:00 +0800
+Subject: [PATCH 3/5] base-files: set default time zone to China CST-8
+
+Signed-off-by: Shiji Yang <yangshiji66@qq.com>
+---
+ package/base-files/files/bin/config_generate | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/package/base-files/files/bin/config_generate b/package/base-files/files/bin/config_generate
+index be21d0079a..87f21737d9 100755
+--- a/package/base-files/files/bin/config_generate
++++ b/package/base-files/files/bin/config_generate
+@@ -312,7 +312,8 @@ generate_static_system() {
+ 		delete system.@system[0]
+ 		add system system
+ 		set system.@system[-1].hostname='OpenWrt'
+-		set system.@system[-1].timezone='UTC'
++		set system.@system[-1].timezone='CST-8'
++		set system.@system[-1].zonename='Asia/Shanghai'
+ 		set system.@system[-1].ttylogin='0'
+ 		set system.@system[-1].log_size='64'
+ 		set system.@system[-1].urandom_seed='0'
+-- 
+2.39.2
+
